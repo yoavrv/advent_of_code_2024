@@ -126,23 +126,24 @@ function getFilesystemCheckSum2(s, verbose=false)
     positions = cumsum(v) # ith element: the End of the part i.e. 1 0 2 3 4 
                           #                                    => 1 1 3 6 10
     checksum = 0
-    digitIterators::Vector{Union{Int64, Nothing}} = [findfirst(==(x), v[2:2:end]) |> y -> !isnothing(y) ? 2*y : y for x in 1:9]
+    digitIterators::Vector{Union{Int64, Nothing}} = [ (findfirst(==(x), v[2:2:end]) |> (y -> !isnothing(y) ? 2*y : y)) for x in 1:9]
     for j=l:-2:1
         # move each left to a fitting hole. shrink the hole, use positions to recover the original location
         if verbose println(v) end
         lj = v[j]
         i = nothing
-        d = lj-1
+        d = lj
         if lj==0
+            # no file
             continue
         end
         if verbose println("j=$j, lj=$lj, index=$(j÷2): ", digitIterators) end
-        while d<9
-            # find the right available slot
-            d += 1
-            i = digitIterators[d]
-            if verbose println("d=$d, i=$i") end
+        for digit = lj:9
+            # find the left available slot
+            i = digitIterators[digit]
+            if verbose println("d=$digit, i=$i") end
             if !isnothing(i)
+                d=digit
                 break
             end
         end
@@ -154,9 +155,9 @@ function getFilesystemCheckSum2(s, verbose=false)
         if verbose println("j=$j, i=$i, d=$d, lj=$lj, v[$i]= $(v[max(i-2,1):min(l,i+2)]), v[$j] = $(v[max(1,j-2):min(j+2,l)])") end
         if verbose println("positions[$i]= $(positions[max(i-2,1):min(l,i+2)])") end
         newVi = d-lj
-        v[i] = newVi
-        v[j] = 0
-        δ = sum((positions[i]-d):(positions[i]-newVi-1))*(j÷2)
+        v[i] = newVi  # move file to the first lj holes, leaving a hole sized d-lj
+        v[j] = 0      # remove files
+        δ = sum((positions[i]-d):(positions[i]-newVi-1))*(j÷2) # sum (position*fileId) = fileId*sum(positions)
         if verbose println(δ) end
         checksum += δ
         if newVi != 0
@@ -201,40 +202,55 @@ function solveNaive(s; verbose=false)
     minJ=1
     for i = length(realvec):-1:1
         curr = realvec[i]
+        
         if lastCurr == -1 && curr!=-1
+            # new group
             lastCurr = curr
         end
+        
         if lastCurr < curr
+            # we encounter an already moved file
             curr = -1
         end
+
         if currSeries == -1 && curr == -1
+            # in an empty space
             continue
         elseif currSeries == -1
+            # open a new group
             currSeries = curr
             seriesLength = 1
         elseif currSeries != curr
+            # finish the group
             # flush
             lastCurr = currSeries
             if verbose println("flushing $i, $seriesLength, $currSeries") end
+            # tighten left bound
             while realvec[minJ] != -1
                 minJ += 1
             end
+            # search left for place
             for j=minJ:min(length(realvec)-seriesLength, i)
                 if all(realvec[j:j+seriesLength-1].==-1)
-                    realvec[j:j+seriesLength-1].=currSeries
-                    realvec[i+1:i+seriesLength].=-1
+                    realvec[j:j+seriesLength-1].=currSeries  # move file
+                    realvec[i+1:i+seriesLength].=-1 # enhole where the file was
                     if verbose println(realvec) end
                     break
                 end
             end
+            # start a new group. if curr is -1, we have checks to skip
             currSeries = curr
             seriesLength = 1
         else
+            # continue current group
             seriesLength += 1
         end
     end
     if verbose println(realvec) end
-    sum(max((i-1)*x,0) for (i, x) in enumerate(realvec))
+    sum(
+        x==-1 ? 0 : (i-1)*x
+        for (i, x) in enumerate(realvec)
+    )
 end
 
 println("checksum #2 for test input: ", getFilesystemCheckSum2(testInput, true))
