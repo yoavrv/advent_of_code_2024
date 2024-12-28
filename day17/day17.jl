@@ -217,3 +217,125 @@ end
 
 
 # trying deeper thinking
+
+# checked out "reddit day 17 help": Suggested to look at the program and think in terms of octals
+# so I should probably look at the actual program I got
+# 2,4,1,1,7,5,4,0,0,3,1,6,5,5,3,0
+
+
+function compiledProgram(A)
+    output = []
+    while A!=0
+        B=A%8
+        B=B ⊻ 1
+        C=A>>B
+        B=B⊻C
+        A=A>>3
+        B=B ⊻ 6
+        push!(output, B&0b111)
+    end
+    return output
+end
+
+function optimizedProgram(A)
+    output = []
+    while A!=0
+        B=(A&0b111) ⊻ 1
+        B=B ⊻ (A>>B)
+        push!(output, B ⊻ 0b110)
+        A=A>>3
+    end
+    return output
+end
+
+# We can see that we have a while loop, which outputs a symbol and truncates A by 3 bits every time.
+
+# This means for output [2,4,1,1,7,5,4,0,0,3,1,6,5,5,3,0] We need A to be a number of 16*3 bits, ~15 decimal digits
+# the virtual machine is fast enough to run through 100 of millions of As, but this is nowhere near!
+
+# We have to use the properties of this specific program: since we truncate A each step, we can try going backwards,
+# reconstructing A based on the output
+
+# e.g. if we have
+# f(A = [abc def ghi]) -> o[1]
+# f(A = [abc def]) -> o[2]
+# f(A = [abc]) -> o[3]
+# we want
+# A[0]=0
+# f^-1(A[0], o3) -> A[1] = abc
+# f^-1(A[1], o2) -> A[2] = abc def
+# f^-1(A[2], o1) -> A[3] = abc def ghi
+
+# I tried reversing the kernel, but got stuck in B=A>>C, which use the original A value for shifts.
+# instead, we can just "movie password crack" the number: for each output, go over all the possible 3 bit additions to A (a).
+# and once we find a valid three bit, add it to A and go to the next output
+
+# i.e
+# A = A[i]
+# o = Output[end-i]
+# for a in 0:7
+#   if f(Aa) == o
+#       A = Aa
+#       break
+
+# this turns the problem from exponential 8^16 possible digits of A to multiplicative (8x16) bit combinations of A, which is much saner
+
+# since we want the smallest value of A, and we build A big-to-small, then checking each 3bit step from 0 to 7 will
+# yield the smallest solution
+
+# the one final problem is that there could be multiple solutions for each oi, which could be invalidated in the next step
+# so we need to "search" through the space and backtrack if we hit an invalid solution
+
+function findQuineProgram()
+    output = [2,4,1,1,7,5,4,0,0,3,1,6,5,5,3,0]
+    function isOptimizedKernelValid(A, o)
+        B=A%8
+        B=B ⊻ 1
+        C=A>>B
+        B=B⊻C
+        A=A>>3
+        B=B ⊻ 6
+        o == B&0b111
+    end
+    A = 0
+    L = length(output)
+    depth = 1
+    while 1 ≤ depth ≤ L
+        # we have A = a[1]a[2]...a[depth]
+        # we check for reverse(output)[depth] and a[depth]
+        o = output[end - depth + 1]
+        if isOptimizedKernelValid(A, o)
+            # if A works, we start the next 
+            if depth == L
+                println("Done A = 0o$(string(A, base=8)) for $o")
+                break # found all digits
+            end
+            # go to the next 3 digits
+            depth += 1
+            A = A<<3
+            println("Ascending A = 0o$(string(A, base=8)) for $o")
+        else
+            # if A didn't work, we go to the next a[depth]
+            while A&0b111 == 7
+                # if we checked all 0-7, we go back to the previous 3bit
+                depth += -1
+                A = A>>3
+                println("reverting A = 0o$(string(A, base=8)) for $o")
+            end
+            A += 1
+        end
+    end
+    A
+end
+
+
+# test solution
+A = findQuineProgram()
+quineMem = TriBitMemory(A, 0, 0,
+    TriBitOperator.([2<<3 + 4,1<<3 + 1,7<<3 + 5,4<<3 + 0,0<<3 + 3,1<<3 + 6,5<<3 + 5,3<<3 + 0])
+)
+
+loop!(quineMem)
+@assert quineMem.output == [2,4,1,1,7,5,4,0,0,3,1,6,5,5,3,0]
+println(A)
+
