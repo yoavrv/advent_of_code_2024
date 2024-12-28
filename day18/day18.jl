@@ -111,30 +111,6 @@ function searchPath(board; verbose=false)
     board = fillDeadEnds(board, verbose=verbose)
 
     directions = [CartesianIndex(0, -1), CartesianIndex(-1, 0), CartesianIndex(0, 1), CartesianIndex(1, 0)]
-    junctions = zeros(Int8, size(board))
-
-    nboard = .! board
-    junctions[2:end-1, 2:end-1] += ((nboard[2:end-1, 3:end] .| nboard[2:end-1, 1:end-2]) 
-                                 .& (nboard[1:end-2, 2:end-1] .|  nboard[3:end, 2:end-1]))
-    junctions[1, 2:end-1] += (nboard[1, 3:end] .| nboard[1, 1:end-2]) .& nboard[2, 2:end-1]
-    junctions[end, 2:end-1] += (nboard[end, 3:end] .| nboard[end, 1:end-2]) .& nboard[end-1, 2:end-1]
-    junctions[2:end-1, 1] += nboard[2:end-1, 2] .& (nboard[1:end-2, 1] .|  nboard[3:end, 1])
-    junctions[2:end-1, end] += nboard[2:end-1, end-1] .& (nboard[1:end-2, end] .|  nboard[3:end, end])
-    junctions[1, 1] += true
-    junctions[1, end] += true
-    junctions[end, 1] += true
-    junctions[end, end] += true
-    junctions = min.(1, junctions)
-    junctions[board] .= 2
-
-    if verbose println.(eachrow(junctions)) end
-
-    nexts = zeros(Int16, size(board)..., 4)  # next open place right up left down
-    accumulate!((x, y) -> y==2 ? -1 : y==1 ? 0 : x+1, (@view nexts[:, :, 1]), junctions, dims=2, init=-1)
-    accumulate!((x, y) -> y==2 ? -1 : y==1 ? 0 : x+1, (@view nexts[:, :, 2]), junctions, dims=1, init=-1)
-    accumulate!((x, y) -> y==2 ? -1 : y==1 ? 0 : x+1, (@view nexts[:, end:-1:1, 3]), junctions[:, end:-1:1], dims=2, init=-1)
-    accumulate!((x, y) -> y==2 ? -1 : y==1 ? 0 : x+1, (@view nexts[end:-1:1, :, 4]), junctions[end:-1:1, :], dims=1, init=-1)
-
 
     L, W = size(board)
     function h(i, j)
@@ -151,23 +127,13 @@ function searchPath(board; verbose=false)
     queue = PriorityQueue( startNode => 0 + h(startNode))
 
     function addToQueue!(queue, nodes, node, way)
-        if isnothing(node) return false end
         oldWay = nodes[node]
-        if oldWay ≤ way
-            return false
-        end
+        if oldWay ≤ way return end
         nodes[node] = way
         enqueue!(queue, node => way + h(node))
-        return true
     end
 
     if verbose println("We have $start->$goal, queue=$queue") end
-    if verbose 
-        for i in 1:4 
-            println("Nexts $i")
-            println.(eachrow([Int64(x) for x in nexts[:, :, i]])) 
-        end
-    end
 
     while !isempty(queue)
         node, heuristic = dequeue_pair!(queue)
@@ -175,25 +141,22 @@ function searchPath(board; verbose=false)
 
         if node == goal
             if verbose println("Found goal!")
-                 println.(eachrow(nodes)) end
+                 display(nodes)
+            end
             return heuristic
         end
         
         for i in 1:4
-            δ = nexts[node, i]
-            if δ == 0
-                continue
+            next = node+directions[i]
+            if checkbounds(Bool, board, next) && !board[next]
+                addToQueue!(queue, nodes, next, way+1)
             end
-            n = node
-            for d in 1:δ-1
-                n += directions[i]
-                nodes[n] = min(nodes[n], way + d)
-            end
-            addToQueue!(queue, nodes, node+directions[i], way+δ)
         end
-        println("Status after $node")
-        println("$queue")
-        if verbose println.(eachrow([Int64(x) for x in nodes])) end
+        if verbose 
+            println("Status after $node")
+            println("$queue")
+            display(nodes)
+        end
     end
 end
 
