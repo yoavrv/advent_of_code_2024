@@ -130,6 +130,10 @@ function searchPath(board; verbose=false)
         oldWay = nodes[node]
         if oldWay ≤ way return end
         nodes[node] = way
+        if node in keys(queue)
+            queue[node] = way + h(node)
+            return
+        end
         enqueue!(queue, node => way + h(node))
     end
 
@@ -158,9 +162,29 @@ function searchPath(board; verbose=false)
             display(nodes)
         end
     end
+    return nothing
 end
 
 
 
+puzzleBoard = fillBoard(puzzleInput, (71, 71), 1024)
+println("solution for puzzleInput: ", searchPath(puzzleBoard))
 
 
+# part 2
+
+# lets try brute force first (stupid but maybe it will work and I'm very late)
+
+function solvePart2Stupidly()
+    puzzleBoard = zeros(Bool, 71, 71)
+    for (j, i) in eachrow(puzzleInput)
+        puzzleBoard[i+1, j+1] = true
+        sol = searchPath(puzzleBoard)
+        if isnothing(sol)
+            println("$j,$i")
+            return (j, i)
+        end
+    end
+end
+
+# stupid, but it works!
