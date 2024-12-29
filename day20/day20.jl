@@ -1,9 +1,5 @@
 using DataStructures
 
-function readToBlockMatrix(path)
-    permutedims(reduce(hcat, [[x for x in line] for line in eachline(path, keep=false)]))
-end
-
 function stringToBlockMatrix(s)
     permutedims(reduce(hcat,[[y for y in x] for x in split(replace(s, "\r"=>""),'\n', keepempty=false)]))
 end
@@ -25,10 +21,10 @@ testInput = """###############
 ###############
 """
 
-testBoard = stringToBlockMatrix(testInput)
-start = findfirst(==('S'), testBoard)
-goal = findfirst(==('E'), testBoard)
-testBoard = testBoard .== '#'
+# testBoard = stringToBlockMatrix(testInput)
+# start = findfirst(==('S'), testBoard)
+# goal = findfirst(==('E'), testBoard)
+# testBoard = testBoard .== '#'
 
 function fillBoard(board, start; verbose=false)
     directions = [CartesianIndex(0, -1), CartesianIndex(-1, 0), CartesianIndex(0, 1), CartesianIndex(1, 0)]
@@ -44,7 +40,6 @@ function fillBoard(board, start; verbose=false)
             queue[node] = way
             return
         end
-        if node == goal return end
         enqueue!(queue, node => way)
     end
 
@@ -69,9 +64,9 @@ function fillBoard(board, start; verbose=false)
 end
 
 
-startDistance = fillBoard(testBoard, start)
-endDistance = fillBoard(testBoard, goal)
-@assert startDistance[goal] == endDistance[start]
+# startDistance = fillBoard(testBoard, start)
+# endDistance = fillBoard(testBoard, goal)
+# @assert startDistance[goal] == endDistance[start]
 
 # for every point along the optimal path, startDistance[x] + endDIstance[x]
 # equals the total path from start to end
@@ -110,6 +105,8 @@ function solvePart1(input, minAdvantage=100; verbose=false)
     L, W = size(board)
     way = endDistance[start]
 
+    if verbose println(way) end
+
     n = 0
     for i in 2:L-1
         for j in 2:W-1
@@ -117,10 +114,10 @@ function solvePart1(input, minAdvantage=100; verbose=false)
                 continue
             end
             cheat = cheatDistance(startDistance, endDistance, CartesianIndex(i, j))
+            if verbose
+                println("At ($i, $j): $way $cheat")
+            end
             if minAdvantage ≤ (way - cheat)
-                if verbose
-                    println("At ($i, $j): $cheat")
-                end
                 n += 1
             end
         end
@@ -129,5 +126,10 @@ function solvePart1(input, minAdvantage=100; verbose=false)
 end
 
 
-println("Solution test input for part 1: ", solvePart1(testInput, verbose=true))
+println("Solution test input for part 1: ", solvePart1(testInput, 0, verbose=true))
+puzzleInput= replace(read(joinpath("day20", "puzzle_input20.txt"), String), "\r"=>"")
+println("Solution puzzle input for part 1: ", solvePart1(puzzleInput, 100))
+
+# part 2
+
 
