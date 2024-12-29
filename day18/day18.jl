@@ -187,4 +187,4 @@ function solvePart2Stupidly()
     end
 end
 
-# stupid, but it works!
+# stupid, but it works! TODO one day: check if julia just optimizes the heck out of the function
