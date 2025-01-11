@@ -16,7 +16,7 @@ for c in steps
         push!(output, res)
         println(output)
     end
-    if verbose sleep(0.3) end
+    if verbose sleep(0.1) end
 end
 
 function animate(steps; printLayer=1)
@@ -75,7 +75,7 @@ end
 # and the weight of the final layer is 1
 
 # We therefore need to propagate the cost up, so the cache should really be
-# (layer, fromchar, tochar) => [chars in layer-1]
+# (layer, fromchar, tochar) => [chars in layer 1]
 
 
 
@@ -96,12 +96,22 @@ function nextBinaryPemutation(m, n, curr=nothing)
 end
 
 
-function layerGetFromAToBOptions(layer, from, to; mainLayer = 4)
-    pad = layer == mainLayer ? charToMainPad : charToPad
-    padChar = layer == mainLayer ? mainPad : robotPad
-    
-    fromIndex = pad[from]
-    toIndex = pad[to]
+cachePossibilities = Dict{Tuple{Char, Char, Matrix{Char}}, Vector{Vector{Char}}}()
+function layerGetFromAToBOptions(from, to, pad::Matrix{Char})
+    if (from, to, pad) in keys(cachePossibilities)
+        return cachePossibilities[(from, to, pad)]
+    end
+
+    toIndex = CartesianIndex(1, 1)
+    fromIndex = CartesianIndex(1, 1)
+    for (index, char) in pairs(pad)
+        if from == char
+            fromIndex = index
+        end
+        if to == char
+            toIndex = index
+        end
+    end
     m, n = Tuple(toIndex - fromIndex)
     if m==0 && n==0
         return [['A']]
@@ -135,7 +145,7 @@ function layerGetFromAToBOptions(layer, from, to; mainLayer = 4)
                 pos += deltaTopDown
                 push!(curr, topDownSymbol)
             end
-            if !checkbounds(Bool, padChar, pos) || padChar[pos] == '.'
+            if !checkbounds(Bool, pad, pos) || pad[pos] == '.'
                 curr = nothing
                 break
             end
@@ -148,11 +158,14 @@ function layerGetFromAToBOptions(layer, from, to; mainLayer = 4)
         perm = nextBinaryPemutation(mabs, nabs, perm)
     end
 
+    cachePossibilities[(from, to, pad)] = options
     return options
 end
 
-function solve(layer, sequence; mainLayer = 4, maxLayerToCache = 3)
+function solve(layer, sequence; mainLayer=4, maxLayerToCache=3)
+    
     cacheSequence = Dict{Tuple{Int, Char, Char}, Union{Vector{Char}, Nothing}}()
+    
     function cacheSequenceFunc(layer::Int, from::Char, to::Char)
         if layer==1 return Char[to]  end
         if layer ≤ maxLayerToCache
@@ -163,7 +176,7 @@ function solve(layer, sequence; mainLayer = 4, maxLayerToCache = 3)
         return nothing
     end
 
-    function innerSolve(layer, sequence; breakCost=100_000)
+    function innerSolve(layer, sequence; breakCost=nothing)
         subsequence = []
 
         for (i, to) in enumerate(sequence)
@@ -172,14 +185,20 @@ function solve(layer, sequence; mainLayer = 4, maxLayerToCache = 3)
             
             if isnothing(res)
                 # calculate res
-                possiblities = layerGetFromAToBOptions(layer, from, to; mainLayer=mainLayer)
+                if layer == mainLayer
+                    possiblities = layerGetFromAToBOptions(from, to, mainPad)
+                else
+                    possiblities = layerGetFromAToBOptions(from, to, robotPad)
+                end
+                
                 bestPossibility = possiblities[1]
-                bestres = innerSolve(layer-1, bestPossibility, breakCost=breakCost-length(subsequence))
+                breakCostNow = isnothing(breakCost) ? nothing : breakCost - length(subsequence)
+                bestres = innerSolve(layer-1, bestPossibility, breakCost=breakCostNow)
                 for poss in possiblities[2:end]
                     
-                    breakCostNow = isnothing(bestres) ? breakCost - length(subsequence) : length(bestres)
+                    breakCostNow = isnothing(bestres) ? (isnothing(breakCost) ? nothing : breakCost - length(subsequence)) : length(bestres)
                     res = innerSolve(layer-1, poss, breakCost=breakCostNow)
-                    if !isnothing(res) && length(res) < length(bestres)
+                    if !isnothing(res) && !isnothing(bestres) && length(res) < length(bestres)
                         bestres = res
                     end
                 end
@@ -192,7 +211,7 @@ function solve(layer, sequence; mainLayer = 4, maxLayerToCache = 3)
 
             end
             append!(subsequence, res)
-            if breakCost < length(subsequence)
+            if !isnothing(breakCost) && breakCost < length(subsequence)
                 return nothing
             end
 
@@ -201,18 +220,19 @@ function solve(layer, sequence; mainLayer = 4, maxLayerToCache = 3)
         return subsequence
     end
 
-    return innerSolve(layer, sequence), cacheSequence
+    return innerSolve(layer, sequence)
 end
 
-function score(sequenceAsString)
+function score(sequenceAsString; mainLayer=4)
     num = parse(Int, sequenceAsString[1:end-1])
-    cost = length(solve(4, collect(sequenceAsString))[1])
+    res = solve(mainLayer, collect(sequenceAsString), mainLayer=mainLayer, maxLayerToCache=mainLayer)
+    cost = length(res)
     return num*cost
 end
 
-function fullScore(sequencesAsString)
+function fullScore(sequencesAsString; mainLayer=4)
     sum(
-        score(x)
+        score(x, mainLayer=mainLayer)
         for x in split(sequencesAsString, "\n", keepempty=false)
     )
 end
@@ -229,5 +249,88 @@ println("Solution for part 1 test input: ", fullScore(testInput))
 puzzleInput = replace(read(joinpath("day21","puzzle_input21.txt"), String), "\r"=>"")
 println("Solution for part 1 puzzle input: ", fullScore(puzzleInput))
 
+# part 2
+
+# println("Solution for part 2 test input: ", fullScore(testInput, mainLayer=27))
+
+# println("Solution for part 2 puzzle input: ", fullScore(puzzleInput, mainLayer=27))
 
 
+function solve2(layer, sequence)
+    
+    cacheSequence = Dict{Tuple{Int, Char, Char}, Union{Int, Nothing}}()
+    
+    function cacheSequenceFunc(layer::Int, from::Char, to::Char)
+        if layer==1 return 1 end
+        if (layer, from , to) in keys(cacheSequence)
+            return cacheSequence[(layer, from, to)]
+        end
+        return nothing
+    end
+
+    mainLayer = layer
+
+    function innerSolve(layer, sequence; breakCost=nothing)
+        overallcost = 0
+
+        for (i, to) in enumerate(sequence)
+            from = i == 1 ? 'A' : sequence[i-1]
+            cost = cacheSequenceFunc(layer, from, to)
+            
+            if isnothing(cost)
+                # calculate cost
+                pad = (layer == mainLayer) ?  mainPad : robotPad
+                
+                possiblities = layerGetFromAToBOptions(from, to, pad)
+                breakCostNow = isnothing(breakCost) ? nothing : breakCost - overallcost
+                bestcost = nothing
+
+                for poss in possiblities
+                    breakCostNow = isnothing(bestcost) ? breakCostNow : bestcost
+                    cost = innerSolve(layer-1, poss, breakCost=breakCostNow)
+                    if isnothing(bestcost)
+                        bestcost = cost
+                    elseif !isnothing(cost) && cost < bestcost
+                        bestcost = cost
+                    end
+                end
+
+                cost = bestcost
+                if isnothing(cost) return nothing end
+                cacheSequence[(layer, from, to)] = cost
+            end
+
+            overallcost += cost
+            if !isnothing(breakCost) && breakCost < overallcost
+                return nothing
+            end
+        end
+
+        return overallcost
+    end
+
+    return innerSolve(layer, sequence)
+end
+
+function score2(sequenceAsString; mainLayer=4)
+    num = parse(Int, sequenceAsString[1:end-1])
+    cost = solve2(mainLayer, collect(sequenceAsString))
+    return num*cost
+end
+
+function fullScore2(sequencesAsString; mainLayer=4)
+    sum(
+        score2(x, mainLayer=mainLayer)
+        for x in split(sequencesAsString, "\n", keepempty=false)
+    )
+end
+
+println("Solution for part 1 test input: ", fullScore2(testInput))
+puzzleInput = replace(read(joinpath("day21","puzzle_input21.txt"), String), "\r"=>"")
+println("Solution for part 1 puzzle input: ", fullScore2(puzzleInput))
+
+# part 2
+
+println("Solution for part 2 test input: ", fullScore2(testInput, mainLayer=27))
+
+println("Solution for part 2 puzzle input: ", fullScore2(puzzleInput, mainLayer=27))
