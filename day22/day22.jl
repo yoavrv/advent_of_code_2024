@@ -27,86 +27,130 @@ println("solution for past 1 puzzle input: ", sum(run.(puzzleInput, 2000)))
 
 # part 2
 
-# lets try visualize
+# For a single monkey, we have to keep track of all the previous
+# four combination: We can always get a new "best" price which we have to check
+# against the leading combination having already being seen
 
-bits = split("abcdefghijklmnopqrstuvwx","")
-for i in 7:24
-    bits[i] = bits[i]*"^"*bits[i-6]
+# We have n moneys, 2,000 iterations, and we need to keep track of 21x21x21x21
+# possible sequences, which is an almost too much things to track
+
+# outline:
+# we can have an array
+# worth[monkeys, off1, off2, off3, off4] = -1
+# then each iteration calculate the offsets, and update
+# if we have a new value
+# worth[monkeys, off1, off2, off3, off4] = worth[...] == -1 ? new : worth[...]
+# At the end, we set all the -1 to 0 and sum
+# argmax(sum(max.(worth, 0), axis=monkeys))
+
+using OffsetArrays
+
+const pruneMask = (1 << 24) - 1
+function nextMonkeyNumbers!(num)
+    num .= (num .⊻ (num .<< 6)) .& pruneMask
+    num .= (num .⊻ (num .>> 5)) .& pruneMask
+    num .= (num .⊻ (num .<< 11)) .& pruneMask
 end
-for i in 1:(24-5)
-    bits[i] = bits[i]*"^"*bits[i+5]
-end
-for i in 12:24
-    bits[i] = bits[i]*"^"*bits[i-11]
-end
 
-# a^f
-# b^g^a
-# c^h^b
-# d^i^c
-# e^j^d
-# f^k^e
-# g^a^l^f
-# h^b^m^g^a
-# i^c^n^h^b
-# j^d^o^i^c
-# k^e^p^j^d
-# l^f^q^k^e^a^f
-# m^g^a^r^l^f^b^g^a
-# n^h^b^s^m^g^a^c^h^b
-# o^i^c^t^n^h^b^d^i^c
-# p^j^d^u^o^i^c^e^j^d
-# q^k^e^v^p^j^d^f^k^e
-# r^l^f^w^q^k^e^g^a^l^f
-# s^m^g^a^x^r^l^f^h^b^m^g^a
-# t^n^h^b^i^c^n^h^b
-# u^o^i^c^j^d^o^i^c
-# v^p^j^d^k^e^p^j^d
-# w^q^k^e^l^f^q^k^e^a^f
-# x^r^l^f^m^g^a^r^l^f^b^g^a
+function findBestSequence(monkeyNumbers; iterations=2_000, verbose=false)
+    numMonkeys = length(monkeyNumbers)
+    worth = fill(Int16(-1), (numMonkeys, 21, 21, 21, 21))
+    worth = OffsetArray(worth, 1:numMonkeys, -10:10, -10:10, -10:10, -10:10)
 
-# now we can simplify: any "double" xor is not doing anything (x^y^x = y)
+    priceOffsets = zeros(Int16, (numMonkeys, 4))
+    # do the first 4 iterations by hand
+    prices = monkeyNumbers .% 10
 
-# a^f
-# b^g^a
-# c^h^b
-# d^i^c
-# e^j^d
-# f^k^e
-# g^a^l^f
-# h^b^m^g^a
-# i^c^n^h^b
-# j^d^o^i^c
-# k^e^p^j^d
-# l^q^k^e^a
-# m^r^l^f^b
-# n^s^m^g^a^c
-# o^t^n^h^b^d
-# p^u^o^i^c^e
-# q^v^p^j^d^f
-# r^w^q^k^e^g^a
-# s^x^r^l^f^h^b
-# t^i^c
-# u^j^d
-# v^k^e
-# w^l^a
-# x^m^b
-
-# doesn't seem to be that good, what about a few iterations?
-
-xors = [1<<i for i in 0:23]
-function step_bits(xors)
-    for i in 7:24
-        xors[i] = xors[i]⊻xors[i-6]
+    if verbose
+        for i in 1:min(4, numMonkeys) 
+            println(lpad(monkeyNumbers[i], 10), ": ",
+                   lpad("", 3), " | ", lpad("", 3)) 
+        end
     end
-    for i in 1:(24-5)
-        xors[i] = xors[i]⊻xors[i+5]
+    nextMonkeyNumbers!(monkeyNumbers)
+    newPrices = monkeyNumbers .% 10
+    priceOffsets[:, 1] .= newPrices .- prices
+    prices = newPrices
+
+    if verbose
+        for i in 1:min(4, numMonkeys) 
+            println(lpad(monkeyNumbers[i], 10), ": ",
+                   lpad(prices[i], 3), " | ", lpad(priceOffsets[i, 1], 3)) 
+        end
     end
-    for i in 12:24
-        xors[i] = xors[i]⊻xors[i-11]
+
+    nextMonkeyNumbers!(monkeyNumbers)
+    newPrices = monkeyNumbers .% 10
+    priceOffsets[:, 2] .= newPrices .- prices
+    prices = newPrices
+    
+    if verbose
+        for i in 1:min(4, numMonkeys) 
+            println(lpad(monkeyNumbers[i], 10), ": ",
+                   lpad(prices[i], 3), " | ", lpad(priceOffsets[i,2], 3)) 
+        end
     end
-    xors
+
+    nextMonkeyNumbers!(monkeyNumbers)
+    newPrices = monkeyNumbers .% 10
+    priceOffsets[:, 3] .= newPrices .- prices
+    prices = newPrices
+
+    if verbose
+        for i in 1:min(4, numMonkeys) 
+            println(lpad(monkeyNumbers[i], 10), ": ",
+                   lpad(prices[i], 3), " | ", lpad(priceOffsets[i,3], 3)) 
+        end
+    end
+
+    nextMonkeyNumbers!(monkeyNumbers)
+    newPrices = monkeyNumbers .% 10
+    priceOffsets[:, 4] .= newPrices .- prices
+    for i in 1:numMonkeys
+        worth[i, priceOffsets[i, :]...] = newPrices[i]
+    end
+    prices = newPrices
+
+    if verbose
+        for i in 1:min(4, numMonkeys) 
+            println(lpad(monkeyNumbers[i], 10), ": ",
+                   lpad(prices[i], 3), " | ", lpad(priceOffsets[i,4], 3)) 
+        end
+    end
+
+    # loop the remaining
+    for t in 4:iterations
+        priceOffsets[:, 1:3] .=  priceOffsets[:, 2:4]
+        nextMonkeyNumbers!(monkeyNumbers)
+        newPrices = monkeyNumbers .% 10
+        priceOffsets[:, 4] .= newPrices - prices
+        for i in 1:numMonkeys
+            worth[i, priceOffsets[i, :]...] = (
+                worth[i, priceOffsets[i, :]...] == -1 ? newPrices[i] : worth[i, priceOffsets[i, :]...]
+            )
+        end
+        prices = newPrices
+
+        if verbose
+            for i in 1:min(4, numMonkeys) 
+                println(lpad(monkeyNumbers[i], 10), ": ",
+                       lpad(prices[i], 3), " | ", lpad(priceOffsets[i,4], 3)) 
+            end
+        end
+    end
+    # fill
+    bananas = sum(max.(worth, 0), dims=1)
+    bestOffsets = argmax(bananas)
+    return bestOffsets, bananas[bestOffsets]
 end
 
-# I like this vizualization, but it seems to just be psuedo random
-#  and I should just solve the questions assuming its random
+findBestSequence([123], iterations=4, verbose=true)
+
+testInput2 = [1, 2, 3, 2024]
+offset, bananas = findBestSequence(testInput2)
+
+println("Part 2 solution for testInput2: offset=", offset, " bananas=", bananas)
+
+offset, bananas = findBestSequence(puzzleInput)
+println("Part 2 solution for puzzle input: offset=", offset, " bananas=", bananas)
+
